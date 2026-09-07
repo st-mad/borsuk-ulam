@@ -6,10 +6,13 @@
 #include <iostream>
 #include <random>
 
+Color BACKGROUND = BLACK;
+Color FOREGROUND = RAYWHITE;
+
 Vector2 f(Vector3 coords) {
    // defines a function over S^2
 
-   return (Vector2) {0.0f, 0.0f};
+   return (Vector2) {coords.x + coords.z * coords.y, coords.y + coords.z};
 }
 
 float loss(Vector3 coords, Vector2 (*func)(Vector3)) {
@@ -17,35 +20,36 @@ float loss(Vector3 coords, Vector2 (*func)(Vector3)) {
 
 }
 
-std::vector<std::vector<Vector3>> init_particle_swarm(int swarm_size, Vector2 (*func)(Vector3)) {
-    // the simplex stuff was too hard and my brain is smooth. We will do particle swarm optimisation instead.
-    std::random_device rd;
-    std::mt19937 gen(rd()); 
+std::tuple<std::vector<Vector3>, std::vector<Vector3>, std::vector<Vector3>, Vector3> init_particle_swarm(int swarm_size, Vector2 (*func)(Vector3), std::mt19937 gen) {
+    // the simplex stuff was too hard and my brain is smooth.
+    // We will do particle swarm optimisation instead.
 
-    float min = 0.0f;
-    float max = 1.0f;
-    std::uniform_real_distribution<float> dis(min, max);
-
+    // set up random stuff
+    //std::mt19937 gen(rd()); 
+    std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
 
     // init swarm (swarm_size random unit vectors.)
     std::vector<Vector3> swarm(swarm_size); 
     std::vector<Vector3> best_known_pos(swarm_size);
     std::vector<Vector3> velocities(swarm_size);
-    Vector3 global = {0,0,0};
+    Vector3 global = {1,0,0};
     for (int i = 0; i < swarm_size; i++) {
-        Vector3 rand_vec = {dis(gen) *2 - 1, dis(gen) *2 - 1, dis(gen) *2 - 1};
+        Vector3 rand_vec = {dis(gen), dis(gen), dis(gen)};
         rand_vec = Vector3Normalize(rand_vec);
-        swarm.push_back(rand_vec);
-        best_known_pos.push_back(rand_vec);
+        //printf("%f,%f,%f", rand_vec.x, rand_vec.y, rand_vec.z);
+        swarm[i] = rand_vec;
+        //printf("%f,%f,%f", swarm[i].x, swarm[i].y, swarm[i].z);
+        best_known_pos[i] = rand_vec;
         if (loss(rand_vec,f) < loss(global,f)) {
             global = rand_vec;
         }
         
-        Vector3 rand_velocity = {dis(gen)*2 - 1, dis(gen) *2 - 1, dis(gen) *2 - 1};
-        velocities.push_back(rand_velocity);
+        Vector3 rand_velocity = {dis(gen), dis(gen), dis(gen)};
+        velocities[i] =  rand_velocity;
     }
+   
 
-    return {swarm, best_known_pos, velocities};
+    return {swarm, best_known_pos, velocities, global};
 } 
 
 // we define a graph on the edges instead of a dual graph.
@@ -86,71 +90,132 @@ int main(void) {
 
 
     // man I just want my camera to move around with WASD.
-    float radius = 8.0f; // Distance from the sphere target
-    float alpha = 0.0f;  // Horizontal angle (yaw)
-    float beta = 0.5f;   // Vertical angle (pitch)
-    float speed = 2.0f;  // Speed of rotation
+    float cam_radius = 5.0f; // Distance from the sphere target
+    float yaw = 0.0f;  // Horizontal angle (yaw)
+    float pitch = 0.5f;   // Vertical angle (pitch)
+    float rotation_speed = 2.0f;  // Speed of rotation
 
     // this is the mesh (idk how to edit size on the fly and parameterise it.)
-    Mesh sphereMesh = GenMeshSphere(2.0f, 16, 16);
+    Mesh sphereMesh = GenMeshSphere(1.0f, 100, 100);
     Model sphereModel = LoadModelFromMesh(sphereMesh);
 
-    // AI SLOP
-    // Set the rendering mode to wireframe if you want to visually see the triangles
-    // By default, it will be a flat color.
-    // To see the triangles: sphereModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
+    sphereModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = RED;
 
     Vector3 modelPosition = { 0.0f, 0.0f, 0.0f };
 
     // initialise the swarm
-    std::vector<std::vector<Vector3>> swarm = init_particle_swarm(100, f);
+    std::random_device rd;
+    std::mt19937 gen(rd()); 
+
+    float min = 0.0f;
+    float max = 1.0f;
+    std::uniform_real_distribution<float> dis(min, max);
+
+
+
+    // PCO constants
+    int SWARM_SIZE = 100;
+    float INERTIA_WEIGHT = 0.5;
+    float COGNITIVE_COEFFICIENT = 2;
+    float SOCIAL_COEFFICIENT = 2;
+    float TOLERANCE = 1e-10f;
+    Color SWARM_COLOUR = (Color) {255, 0, 255, 150};
+    Color ANTIPODE_COLOUR = BLUE;
+
+    auto [positions, best_known_pos, velocities, global] = init_particle_swarm(SWARM_SIZE, f, gen);
 
     SetTargetFPS(60); 
 
     bool swarm_running = true;
+    Vector3 result;
     // main loop
     while (!WindowShouldClose()) {
         //update
         float dt = GetFrameTime();
 
         //mvoing things around
-        if (IsKeyDown(KEY_A)) alpha -= speed * dt; // Orbit left
-        if (IsKeyDown(KEY_D)) alpha += speed * dt; // Orbit right
-        if (IsKeyDown(KEY_W)) beta += speed * dt;  // Orbit up
-        if (IsKeyDown(KEY_S)) beta -= speed * dt;  // Orbit down
+        if (IsKeyDown(KEY_A)) yaw -= rotation_speed * dt; // Orbit left
+        if (IsKeyDown(KEY_D)) yaw += rotation_speed * dt; // Orbit right
+        if (IsKeyDown(KEY_W)) pitch += rotation_speed * dt;  // Orbit up
+        if (IsKeyDown(KEY_S)) pitch -= rotation_speed * dt;  // Orbit down
 
         // Clamp the vertical angle so the camera doesn't flip upside down at the poles
-        if (beta >  1.5f) beta =  1.5f;
-        if (beta < -1.5f) beta = -1.5f;
+        if (pitch >  1.5f) pitch =  1.5f;
+        if (pitch < -1.5f) pitch = -1.5f;
 
         // 3. Mathematical conversion from Angles -> 3D position vector
-        camera.position.x = camera.target.x + radius * cosf(beta) * sinf(alpha);
-        camera.position.y = camera.target.y + radius * sinf(beta);
-        camera.position.z = camera.target.z + radius * cosf(beta) * cosf(alpha);
+        camera.position.x = camera.target.x + cam_radius * cosf(pitch) * sinf(yaw);
+        camera.position.y = camera.target.y + cam_radius * sinf(pitch);
+        camera.position.z = camera.target.z + cam_radius * cosf(pitch) * cosf(yaw);
         
         //compute the swarm
         if (swarm_running) {
 
+            // random movement
+            for (int i = 0; i < SWARM_SIZE; i++) {
+                Vector3 rand_p = {dis(gen), dis(gen), dis(gen)};
+                Vector3 rand_g = {dis(gen), dis(gen), dis(gen)};
+                
+                // updating the velocities using the formula
+                velocities[i] = {
+                    INERTIA_WEIGHT * velocities[i].x + COGNITIVE_COEFFICIENT * rand_p.x * (best_known_pos[i].x - positions[i].x) + SOCIAL_COEFFICIENT * rand_g.x * (global.x - positions[i].x),
+                    INERTIA_WEIGHT * velocities[i].y + COGNITIVE_COEFFICIENT * rand_p.y * (best_known_pos[i].y - positions[i].y) + SOCIAL_COEFFICIENT * rand_g.y * (global.y - positions[i].y),
+                    INERTIA_WEIGHT * velocities[i].z + COGNITIVE_COEFFICIENT * rand_p.z * (best_known_pos[i].z - positions[i].z) + SOCIAL_COEFFICIENT * rand_g.z * (global.z - positions[i].z)
+                };
+                
+                positions[i] = Vector3Normalize(Vector3Add(positions[i], velocities[i]));
+
+                // updating best knowns and global
+                if (loss(positions[i], f) < loss(best_known_pos[i], f)) {
+                    best_known_pos[i] = positions[i];
+                    
+                    if (loss(best_known_pos[i], f) < loss(global, f)) {
+                        global = best_known_pos[i];
+                    }
+                }
+
+                if (loss(global, f) < TOLERANCE) {
+                    swarm_running = false;
+                    result = global;
+
+                    TraceLog(LOG_INFO, "Result found, %f,%f,%f, with loss %f", best_known_pos[i].x, best_known_pos[i].y, best_known_pos[i].z, loss(best_known_pos[i], f));                
+                    TraceLog(LOG_INFO, "Antipodal values: (%f, %f), (%f, %f)", f(global).x, f(global).y, f(Vector3Scale(global, -1)).x, f(Vector3Scale(global,-1)).y);                
+                }
+
+            }
+                TraceLog(LOG_INFO, "Current Global best, %f,%f,%f, with loss %f", global.x, global.y, global.z, loss(global, f));                
         }
 
 
-        // Draw
+        //raylib boilerplate
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(BACKGROUND);
 
-            // Enter 3D Mode using our camera setup
             BeginMode3D(camera);
 
-                // Option A: Render a solid shaded sphere model
-                DrawModel(sphereModel, modelPosition, 1.0f, LIGHTGRAY);
+                DrawModel(sphereModel, modelPosition, 1.0f, FOREGROUND);
 
-                // Option B: Render the wireframe triangles on top so you can see the triangulation layout
-                DrawModelWires(sphereModel, modelPosition, 1.0f, DARKGRAY);
+                DrawModelWires(sphereModel, modelPosition, 1.0f, (Color) {107, 7, 0, 55});
 
-                // Draw a reference grid underneath the sphere
-                DrawGrid(10, 1.0f);
+                //DrawGrid(10, 1.0f);
 
+
+           
+            //for (int i = 0; i < SWARM_SIZE; i++) {
+            //       printf("%f,%f,%f", positions[i].x, positions[i].y, positions[i].z);
+            //}
+
+            // drwa the swarm
+            for (int i = 0; i < SWARM_SIZE; i++) {
+                DrawSphere(positions[i], 0.05f, SWARM_COLOUR);
+            }
+
+            // draw the global as it moves around.
+            DrawSphere(global, 0.05f, ANTIPODE_COLOUR);
+            DrawSphere(Vector3Scale(global,-1), 0.05f, ANTIPODE_COLOUR);
             EndMode3D();
+
+            
 
             DrawText("Triangulated Sphere Demo", 10, 10, 20, DARKGRAY);
             DrawFPS(10, 40);
@@ -158,9 +223,8 @@ int main(void) {
         EndDrawing();
     }
 
-    // 5. De-Initialization and Cleanup
-    UnloadModel(sphereModel); // This automatically unloads the inner mesh data from GPU VRAM
-    CloseWindow();            // Close window and OpenGL context
-
+    
+    UnloadModel(sphereModel); 
+    CloseWindow();             
     return 0;
 }

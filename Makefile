@@ -3,7 +3,7 @@ CXX      := g++
 CXXFLAGS := -Wall -Wextra -O2 -std=c++17
 
 # Target executable name
-TARGET   := game
+TARGET   := borsuk-ulam
 
 # Build directory (keeps your project folder clean)
 BUILD_DIR := build
