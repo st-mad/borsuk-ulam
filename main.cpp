@@ -8,11 +8,21 @@
 
 Color BACKGROUND = BLACK;
 Color FOREGROUND = RAYWHITE;
+float INITIAL_SPEED = 0.10;
+int SWARM_SIZE = 200;
+float INERTIA_WEIGHT = 0.5;
+float COGNITIVE_COEFFICIENT = 2;
+float SOCIAL_COEFFICIENT = 2;
+float TOLERANCE = 1e-10f;
+Color SWARM_COLOUR = (Color) {255, 0, 255, 150};
+Color ANTIPODE_COLOUR = BLUE;
+
+
 
 Vector2 f(Vector3 coords) {
    // defines a function over S^2
 
-   return (Vector2) {coords.x + coords.z * coords.y, coords.y + coords.z};
+   return (Vector2) {coords.x - coords.y, tan(coords.z)};
 }
 
 float loss(Vector3 coords, Vector2 (*func)(Vector3)) {
@@ -45,6 +55,7 @@ std::tuple<std::vector<Vector3>, std::vector<Vector3>, std::vector<Vector3>, Vec
         }
         
         Vector3 rand_velocity = {dis(gen), dis(gen), dis(gen)};
+        rand_velocity = Vector3Scale(Vector3Normalize(rand_velocity), INITIAL_SPEED);
         velocities[i] =  rand_velocity;
     }
    
@@ -78,7 +89,7 @@ int main(void) {
     //boilder plates
     const int screenWidth = 800;
     const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "raylib [models] - sphere triangulation");
+    InitWindow(screenWidth, screenHeight, "Borsuk-Ulam");
 
     // setting up the camera
     Camera3D camera = { 0 };
@@ -114,21 +125,14 @@ int main(void) {
 
 
     // PCO constants
-    int SWARM_SIZE = 100;
-    float INERTIA_WEIGHT = 0.5;
-    float COGNITIVE_COEFFICIENT = 2;
-    float SOCIAL_COEFFICIENT = 2;
-    float TOLERANCE = 1e-10f;
-    Color SWARM_COLOUR = (Color) {255, 0, 255, 150};
-    Color ANTIPODE_COLOUR = BLUE;
-
     auto [positions, best_known_pos, velocities, global] = init_particle_swarm(SWARM_SIZE, f, gen);
 
     SetTargetFPS(60); 
 
-    bool swarm_running = true;
+    bool swarm_running = false;
     Vector3 result;
     // main loop
+    int iterations = 0;
     while (!WindowShouldClose()) {
         //update
         float dt = GetFrameTime();
@@ -138,7 +142,7 @@ int main(void) {
         if (IsKeyDown(KEY_D)) yaw += rotation_speed * dt; // Orbit right
         if (IsKeyDown(KEY_W)) pitch += rotation_speed * dt;  // Orbit up
         if (IsKeyDown(KEY_S)) pitch -= rotation_speed * dt;  // Orbit down
-
+        if (IsKeyPressed(KEY_SPACE)) swarm_running = true;
         // Clamp the vertical angle so the camera doesn't flip upside down at the poles
         if (pitch >  1.5f) pitch =  1.5f;
         if (pitch < -1.5f) pitch = -1.5f;
@@ -149,7 +153,7 @@ int main(void) {
         camera.position.z = camera.target.z + cam_radius * cosf(pitch) * cosf(yaw);
         
         //compute the swarm
-        if (swarm_running) {
+        if (swarm_running && iterations % 5 == 0) {
 
             // random movement
             for (int i = 0; i < SWARM_SIZE; i++) {
@@ -217,10 +221,11 @@ int main(void) {
 
             
 
-            DrawText("Triangulated Sphere Demo", 10, 10, 20, DARKGRAY);
+            DrawText(TextFormat("Current Global best, %f,%f,%f, with loss %f", global.x, global.y, global.z, loss(global, f)), 10, 10, 20, ANTIPODE_COLOUR);
             DrawFPS(10, 40);
 
         EndDrawing();
+        iterations++;
     }
 
     
