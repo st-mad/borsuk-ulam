@@ -8,8 +8,9 @@
 
 Color BACKGROUND = BLACK;
 Color FOREGROUND = RAYWHITE;
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 600;
+//resizing isnt changing this
+int SCREEN_WIDTH = 800;
+int SCREEN_HEIGHT = 600;
 
 float INITIAL_SPEED = 0.10;
 int SWARM_SIZE = 200;
@@ -281,19 +282,31 @@ int main(void) {
                     // kv + w , we can calculate k by taking max of length of path_plane,
                     // k = 100/max
                     // set w to be ((100, 100) - k * f(global)), then f(global) gets put in the middle.
-                    DrawSplineLinear(path_plane.data(), path_plane.size(), 0.5, PATH_COLOUR);
+                    Vector2 fixed_point = f(global);
+
+                    // compute maxlength
+                    float k = 0;
+                    for (int i = 0; i <  path_plane.size(); i++) { 
+                        if (Vector2Length(path_plane[i]) > k) {
+                            k = Vector2Length(path_plane[i]);
+                        }
+                    }
+                    k = 100/k;
+
+                    // scale the path
+                    Vector2 path_plane_scaled[path_plane.size()];
+                    for (int i = 0; i <  path_plane.size(); i++) { 
+                        path_plane_scaled[i] = Vector2Add(Vector2Scale(Vector2Subtract(path_plane[i], fixed_point), k), (Vector2){100,100});
+                    }
+                    // this doesnt work
+                    DrawSplineLinear(path_plane_scaled, path_plane.size(), 0.5, PATH_COLOUR);
                     DrawText(TextFormat("global_changed: %d", iterations), 50 ,50, 10, ANTIPODE_COLOUR);
                 EndTextureMode();
             }
         
-        // Draw the main 3D game scene here...
-        
-        // Now, draw our canvas texture like a regular picture onto the HUD!
-        // NOTE: Render textures are vertically flipped by nature, so we invert the Y axis size (-target.texture.height)
+            // draw texture onto the screen
             DrawTextureRec(target.texture, (Rectangle){ 0, 0, target.texture.width, -target.texture.height }, (Vector2){ MINIMAP_MARGIN_LEFT, SCREEN_HEIGHT - MINIMAP_HEIGHT - MINIMAP_MARGIN_BOTTOM}, MINIMAP_COLOUR);
 
-            // draw texture onto the screen
-           
 
             DrawText(TextFormat("Current Global best, %f,%f,%f, with loss %f", global.x, global.y, global.z, loss(global, f)), 10, 10, 20, ANTIPODE_COLOUR);
             DrawFPS(10, 40);
