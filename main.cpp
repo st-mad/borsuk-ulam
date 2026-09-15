@@ -28,14 +28,14 @@ int MINIMAP_HEIGHT = 200;
 int MINIMAP_STEPS = 100;
 int MINIMAP_MARGIN_LEFT = 10;
 int MINIMAP_MARGIN_BOTTOM = 10;
-Color MINIMAP_COLOUR = LIGHTGRAY;
+Color MINIMAP_COLOUR = DARKBROWN;
 
 
 
 Vector2 f(Vector3 coords) {
    // defines a function over S^2
 
-   return (Vector2) {coords.x - coords.y, tan(coords.z)};
+   return (Vector2) {coords.x - coords.y, tan(coords.z)* coords.y };
 }
 
 float loss(Vector3 coords, Vector2 (*func)(Vector3)) {
@@ -180,6 +180,11 @@ int main(void) {
         if (IsKeyDown(KEY_W)) pitch += rotation_speed * dt;  // Orbit up
         if (IsKeyDown(KEY_S)) pitch -= rotation_speed * dt;  // Orbit down
         if (IsKeyPressed(KEY_SPACE)) swarm_running = !swarm_running;
+
+        if (IsKeyDown(KEY_K)) {
+            path_angle += 0.1;
+            path_angle_changed = true;
+        }
         // Clamp the vertical angle so the camera doesn't flip upside down at the poles
         if (pitch >  1.5f) pitch =  1.5f;
         if (pitch < -1.5f) pitch = -1.5f;
@@ -249,7 +254,7 @@ int main(void) {
 
             // drwa the swarm
             for (int i = 0; i < SWARM_SIZE; i++) {
-                DrawSphere(positions[i], 0.05f, SWARM_COLOUR);
+                DrawSphere(positions[i], 0.01f, SWARM_COLOUR);
             }
 
             // draw the global as it moves around.
@@ -293,13 +298,23 @@ int main(void) {
                     }
                     k = 100/k;
 
+                    auto scale = [](Vector2 v, Vector2 fixed_point, float k) {
+                        //return Vector2Add(Vector2Scale(Vector2Subtract(v, fixed_point), k), (Vector2){100,100});
+
+                        return Vector2Add(Vector2Scale(v, k), (Vector2){100,100});
+                    };
                     // scale the path
                     Vector2 path_plane_scaled[path_plane.size()];
                     for (int i = 0; i <  path_plane.size(); i++) { 
-                        path_plane_scaled[i] = Vector2Add(Vector2Scale(Vector2Subtract(path_plane[i], fixed_point), k), (Vector2){100,100});
+                        path_plane_scaled[i] = scale(path_plane[i], fixed_point, k);
                     }
-                    // this doesnt work
-                    DrawSplineLinear(path_plane_scaled, path_plane.size(), 0.5, PATH_COLOUR);
+
+                    Vector2 scaled_origin = scale((Vector2){0, 0}, fixed_point, k);
+
+                    Vector2 scaled_fp = scale(fixed_point, fixed_point, k);
+                    DrawPixel(scaled_origin.x, scaled_origin.y, WHITE);
+                    DrawPixel(scaled_fp.x, scaled_fp.y, ANTIPODE_COLOUR);
+                    DrawSplineLinear(path_plane_scaled, path_plane.size(), 2, PATH_COLOUR);
                     DrawText(TextFormat("global_changed: %d", iterations), 50 ,50, 10, ANTIPODE_COLOUR);
                 EndTextureMode();
             }
@@ -315,7 +330,7 @@ int main(void) {
         iterations++;
     }
 
-    
+    UnloadRenderTexture(target);
     UnloadModel(sphereModel); 
     CloseWindow();             
     return 0;
