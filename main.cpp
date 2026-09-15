@@ -8,6 +8,9 @@
 
 Color BACKGROUND = BLACK;
 Color FOREGROUND = RAYWHITE;
+const int SCREEN_WIDTH = 800;
+const int SCREEN_HEIGHT = 600;
+
 float INITIAL_SPEED = 0.10;
 int SWARM_SIZE = 200;
 float INERTIA_WEIGHT = 0.5;
@@ -22,6 +25,9 @@ Color PATH_COLOUR = GREEN;
 int MINIMAP_WIDTH = 200;
 int MINIMAP_HEIGHT = 200;
 int MINIMAP_STEPS = 100;
+int MINIMAP_MARGIN_LEFT = 10;
+int MINIMAP_MARGIN_BOTTOM = 10;
+Color MINIMAP_COLOUR = LIGHTGRAY;
 
 
 
@@ -110,9 +116,8 @@ std::tuple<std::vector<Vector3>, std::vector<Vector2>> compute_path(Vector3 glob
 
 int main(void) {
     //boilder plates
-    const int screenWidth = 800;
-    const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "Borsuk-Ulam");
+    
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Borsuk-Ulam");
 
     // setting up the camera
     Camera3D camera = { 0 };
@@ -158,7 +163,7 @@ int main(void) {
     bool global_changed = true;
     bool path_angle_changed = true;
 
-    SetTargetFPS(60); 
+    SetTargetFPS(120); 
 
     bool swarm_running = false;
     bool result = false;
@@ -269,9 +274,15 @@ int main(void) {
 
                 // compute new minimap texture 
                 BeginTextureMode(target);
-                ClearBackground(BACKGROUND);
-                // scale the stuff to the target.
-                DrawSplineLinear(path_plane.data(), path_plane.size(), 0.5, PATH_COLOUR);
+                    ClearBackground(MINIMAP_COLOUR);
+                    // scale the stuff to the target.
+                    // So we want to take this path_plane 
+                    // and scale it to fit in a 200x200 box with origin in the top left.
+                    // kv + w , we can calculate k by taking max of length of path_plane,
+                    // k = 100/max
+                    // set w to be ((100, 100) - k * f(global)), then f(global) gets put in the middle.
+                    DrawSplineLinear(path_plane.data(), path_plane.size(), 0.5, PATH_COLOUR);
+                    DrawText(TextFormat("global_changed: %d", iterations), 50 ,50, 10, ANTIPODE_COLOUR);
                 EndTextureMode();
             }
         
@@ -279,7 +290,7 @@ int main(void) {
         
         // Now, draw our canvas texture like a regular picture onto the HUD!
         // NOTE: Render textures are vertically flipped by nature, so we invert the Y axis size (-target.texture.height)
-            DrawTextureRec(target.texture, (Rectangle){ 0, 0, target.texture.width, -target.texture.height }, (Vector2){ 20, 20 }, WHITE);
+            DrawTextureRec(target.texture, (Rectangle){ 0, 0, target.texture.width, -target.texture.height }, (Vector2){ MINIMAP_MARGIN_LEFT, SCREEN_HEIGHT - MINIMAP_HEIGHT - MINIMAP_MARGIN_BOTTOM}, MINIMAP_COLOUR);
 
             // draw texture onto the screen
            
