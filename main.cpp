@@ -16,6 +16,12 @@ float SOCIAL_COEFFICIENT = 2;
 float TOLERANCE = 1e-10f;
 Color SWARM_COLOUR = (Color) {255, 0, 255, 150};
 Color ANTIPODE_COLOUR = BLUE;
+Color PATH_COLOUR = GREEN;
+
+// minimap constants.
+int MINIMAP_WIDTH = 200;
+int MINIMAP_HEIGHT = 200;
+int MINIMAP_STEPS = 100;
 
 
 
@@ -50,7 +56,7 @@ std::tuple<std::vector<Vector3>, std::vector<Vector3>, std::vector<Vector3>, Vec
         swarm[i] = rand_vec;
         //printf("%f,%f,%f", swarm[i].x, swarm[i].y, swarm[i].z);
         best_known_pos[i] = rand_vec;
-        if (loss(rand_vec,f) < loss(global,f)) {
+        if (loss(rand_vec, func) < loss(global,func)) {
             global = rand_vec;
         }
         
@@ -84,6 +90,23 @@ int* generate_weighted_graph(Mesh mesh) {
         
     }
 }
+// compute a path on the sphere and its mapping to the plane.
+
+std::tuple<std::vector<Vector3>, std::vector<Vector2>> compute_path(Vector3 global, Vector3 axis, int steps, Vector2 (*func)(Vector3)) {
+    std::vector<Vector3> path(steps + 1);
+    path[0] = global;
+    for (int i = 0; i < steps; i++) {
+        path[i + 1] = Vector3RotateByAxisAngle(global, axis, PI / steps * (i + 1));
+    }
+
+    std::vector<Vector2> values(steps + 1);
+    for (int i = 0; i < steps + 1; i++) {
+        values[i] = (*func)(path[i]);
+    }
+
+    return {path, values};
+}
+
 
 int main(void) {
     //boilder plates
@@ -114,6 +137,9 @@ int main(void) {
 
     Vector3 modelPosition = { 0.0f, 0.0f, 0.0f };
 
+    // the texture for the minimap.
+    RenderTexture2D target = LoadRenderTexture(MINIMAP_WIDTH, MINIMAP_HEIGHT);
+
     // initialise the swarm
     std::random_device rd;
     std::mt19937 gen(rd()); 
@@ -126,11 +152,16 @@ int main(void) {
 
     // PCO constants
     auto [positions, best_known_pos, velocities, global] = init_particle_swarm(SWARM_SIZE, f, gen);
+    float path_angle = 0;
+    Vector3 axis = Vector3Perpendicular(global);
+    auto [path_sphere, path_plane] = compute_path(global, axis, MINIMAP_STEPS, f);
+    bool global_changed = true;
+    bool path_angle_changed = true;
 
     SetTargetFPS(60); 
 
     bool swarm_running = false;
-    Vector3 result;
+    bool result = false;
     // main loop
     int iterations = 0;
     while (!WindowShouldClose()) {
@@ -142,7 +173,7 @@ int main(void) {
         if (IsKeyDown(KEY_D)) yaw += rotation_speed * dt; // Orbit right
         if (IsKeyDown(KEY_W)) pitch += rotation_speed * dt;  // Orbit up
         if (IsKeyDown(KEY_S)) pitch -= rotation_speed * dt;  // Orbit down
-        if (IsKeyPressed(KEY_SPACE)) swarm_running = true;
+        if (IsKeyPressed(KEY_SPACE)) swarm_running = !swarm_running;
         // Clamp the vertical angle so the camera doesn't flip upside down at the poles
         if (pitch >  1.5f) pitch =  1.5f;
         if (pitch < -1.5f) pitch = -1.5f;
@@ -175,12 +206,13 @@ int main(void) {
                     
                     if (loss(best_known_pos[i], f) < loss(global, f)) {
                         global = best_known_pos[i];
+                        global_changed = true;
                     }
                 }
 
                 if (loss(global, f) < TOLERANCE) {
                     swarm_running = false;
-                    result = global;
+                    result = true;
 
                     TraceLog(LOG_INFO, "Result found, %f,%f,%f, with loss %f", best_known_pos[i].x, best_known_pos[i].y, best_known_pos[i].z, loss(best_known_pos[i], f));                
                     TraceLog(LOG_INFO, "Antipodal values: (%f, %f), (%f, %f)", f(global).x, f(global).y, f(Vector3Scale(global, -1)).x, f(Vector3Scale(global,-1)).y);                
@@ -216,10 +248,41 @@ int main(void) {
 
             // draw the global as it moves around.
             DrawSphere(global, 0.05f, ANTIPODE_COLOUR);
+
             DrawSphere(Vector3Scale(global,-1), 0.05f, ANTIPODE_COLOUR);
+
+            //DrawSphere(axis, 0.05f, PATH_COLOUR);
+            // draw the path on the sphere 
+            // TODO: draw an arc
+
+
             EndMode3D();
 
-            
+            // recalculate the path if anything has changed.
+            if (global_changed || path_angle_changed){
+                axis = Vector3Perpendicular(global);
+                axis = Vector3RotateByAxisAngle(axis, global, path_angle);
+                auto [path_sphere, path_plane] = compute_path(global, axis, MINIMAP_STEPS, f);
+                
+                global_changed = false;
+                path_angle_changed = false;
+
+                // compute new minimap texture 
+                BeginTextureMode(target);
+                ClearBackground(BACKGROUND);
+                // scale the stuff to the target.
+                DrawSplineLinear(path_plane.data(), path_plane.size(), 0.5, PATH_COLOUR);
+                EndTextureMode();
+            }
+        
+        // Draw the main 3D game scene here...
+        
+        // Now, draw our canvas texture like a regular picture onto the HUD!
+        // NOTE: Render textures are vertically flipped by nature, so we invert the Y axis size (-target.texture.height)
+            DrawTextureRec(target.texture, (Rectangle){ 0, 0, target.texture.width, -target.texture.height }, (Vector2){ 20, 20 }, WHITE);
+
+            // draw texture onto the screen
+           
 
             DrawText(TextFormat("Current Global best, %f,%f,%f, with loss %f", global.x, global.y, global.z, loss(global, f)), 10, 10, 20, ANTIPODE_COLOUR);
             DrawFPS(10, 40);
